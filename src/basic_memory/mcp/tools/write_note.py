@@ -15,9 +15,6 @@ from basic_memory.utils import parse_tags, validate_project_path
 # Define TagType as a Union that can accept either a string or a list of strings or None
 TagType = Union[List[str], str, None]
 
-# Define TagType as a Union that can accept either a string or a list of strings or None
-TagType = Union[List[str], str, None]
-
 
 @mcp.tool(
     description="Create or update a markdown note. Returns a markdown formatted summary of the semantic content.",
@@ -26,7 +23,7 @@ async def write_note(
     title: str,
     content: str,
     folder: str,
-    tags=None,  # Remove type hint completely to avoid schema issues
+    tags: TagType = None,
     entity_type: str = "note",
     project: Optional[str] = None,
 ) -> str:
