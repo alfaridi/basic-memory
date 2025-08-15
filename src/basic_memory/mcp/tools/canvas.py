@@ -4,7 +4,7 @@ This tool creates Obsidian canvas files (.canvas) using the JSON Canvas 1.0 spec
 """
 
 import json
-from typing import List, Optional, TypedDict
+from typing import List, Optional, Dict, Any
 
 from loguru import logger
 
@@ -14,40 +14,12 @@ from basic_memory.mcp.tools.utils import call_put
 from basic_memory.mcp.project_session import get_active_project
 
 
-class CanvasNode(TypedDict, total=False):
-    """Canvas node schema for JSON Canvas specification."""
-
-    id: str
-    type: str
-    x: int
-    y: int
-    width: int
-    height: int
-    file: Optional[str]
-    text: Optional[str]
-    url: Optional[str]
-    color: Optional[str]
-    label: Optional[str]
-
-
-class CanvasEdge(TypedDict, total=False):
-    """Canvas edge schema for JSON Canvas specification."""
-
-    id: str
-    fromNode: str
-    toNode: str
-    fromSide: Optional[str]
-    toSide: Optional[str]
-    color: Optional[str]
-    label: Optional[str]
-
-
 @mcp.tool(
     description="Create an Obsidian canvas file to visualize concepts and connections.",
 )
 async def canvas(
-    nodes: List[CanvasNode],
-    edges: List[CanvasEdge],
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
     title: str,
     folder: str,
     project: Optional[str] = None,
@@ -60,8 +32,28 @@ async def canvas(
     For the full JSON Canvas 1.0 specification, see the 'spec://canvas' resource.
 
     Args:
-        nodes: List of node objects following JSON Canvas 1.0 spec
-        edges: List of edge objects following JSON Canvas 1.0 spec
+        nodes: List of node objects following JSON Canvas 1.0 spec. Each node must have:
+               - id (str): Unique identifier for the node
+               - type (str): Node type - "file", "text", "link", or "group"
+               - x (int): X coordinate position in pixels
+               - y (int): Y coordinate position in pixels  
+               - width (int): Width in pixels
+               - height (int): Height in pixels
+               Optional fields:
+               - file (str): Path to file for "file" type nodes
+               - text (str): Text content for "text" type nodes
+               - url (str): URL for "link" type nodes
+               - color (str): Color code ("1"-"6" or hex)
+               - label (str): Display label
+        edges: List of edge objects following JSON Canvas 1.0 spec. Each edge must have:
+               - id (str): Unique identifier for the edge
+               - fromNode (str): ID of source node
+               - toNode (str): ID of target node
+               Optional fields:
+               - fromSide (str): Side of source node ("top", "right", "bottom", "left")
+               - toSide (str): Side of target node ("top", "right", "bottom", "left")
+               - color (str): Color code ("1"-"6" or hex)
+               - label (str): Edge label text
         title: The title of the canvas (will be saved as title.canvas)
         folder: Folder path relative to project root where the canvas should be saved.
                 Use forward slashes (/) as separators. Examples: "diagrams", "projects/2025", "visual/maps"
@@ -74,8 +66,6 @@ async def canvas(
     - When referencing files, use the exact file path as shown in Obsidian
       Example: "folder/Document Name.md" (not permalink format)
     - For file nodes, the "file" attribute must reference an existing file
-    - Nodes require id, type, x, y, width, height properties
-    - Edges require id, fromNode, toNode properties
     - Position nodes in a logical layout (x,y coordinates in pixels)
     - Use color attributes ("1"-"6" or hex) for visual organization
 
@@ -85,12 +75,14 @@ async def canvas(
       "nodes": [
         {
           "id": "node1",
-          "type": "file",  // Options: "file", "text", "link", "group"
+          "type": "file",
           "file": "folder/Document.md",
           "x": 0,
           "y": 0,
           "width": 400,
-          "height": 300
+          "height": 300,
+          "color": "1",
+          "label": "Main Document"
         }
       ],
       "edges": [
@@ -98,6 +90,9 @@ async def canvas(
           "id": "edge1",
           "fromNode": "node1",
           "toNode": "node2",
+          "fromSide": "right",
+          "toSide": "left", 
+          "color": "2",
           "label": "connects to"
         }
       ]
