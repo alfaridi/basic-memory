@@ -3,7 +3,6 @@ from typing import Optional
 import typer
 
 from basic_memory.config import get_project_config, ConfigManager
-from basic_memory.mcp.project_session import session
 
 
 def version_callback(value: bool) -> None:
@@ -28,7 +27,7 @@ def app_callback(
         None,
         "--project",
         "-p",
-        help="Specify which project to use 1",
+        help="Specify which project to use",
         envvar="BASIC_MEMORY_PROJECT",
     ),
     version: Optional[bool] = typer.Option(
@@ -51,23 +50,23 @@ def app_callback(
 
         # Initialize MCP session with the specified project or default
         if project:  # pragma: no cover
-            # Use the project specified via --project flag
-            current_project_config = get_project_config(project)
-            session.set_current_project(current_project_config.name)
-
             # Update the global config to use this project
             from basic_memory.config import update_current_project
 
+            # TODO set active project via cli
             update_current_project(project)
-        else:
-            # Use the default project
-            current_project = app_config.default_project
-            session.set_current_project(current_project)
 
 
+## import
 # Register sub-command groups
 import_app = typer.Typer(help="Import data from various sources")
 app.add_typer(import_app, name="import")
 
-claude_app = typer.Typer()
+claude_app = typer.Typer(help="Import Conversations from Claude JSON export.")
 import_app.add_typer(claude_app, name="claude")
+
+
+## cloud
+
+cloud_app = typer.Typer(help="Access Basic Memory Cloud")
+app.add_typer(cloud_app, name="cloud")

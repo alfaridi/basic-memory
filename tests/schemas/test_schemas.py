@@ -1,5 +1,6 @@
 """Tests for Pydantic schema validation and conversion."""
 
+import os
 import pytest
 from datetime import datetime, time, timedelta
 from pydantic import ValidationError, BaseModel
@@ -20,7 +21,7 @@ def test_entity_project_name():
     """Test creating EntityIn with minimal required fields."""
     data = {"title": "Test Entity", "folder": "test", "entity_type": "knowledge"}
     entity = Entity.model_validate(data)
-    assert entity.file_path == "test/Test Entity.md"
+    assert entity.file_path == os.path.join("test", "Test Entity.md")
     assert entity.permalink == "test/test-entity"
     assert entity.entity_type == "knowledge"
 
@@ -29,7 +30,7 @@ def test_entity_project_id():
     """Test creating EntityIn with minimal required fields."""
     data = {"project": 2, "title": "Test Entity", "folder": "test", "entity_type": "knowledge"}
     entity = Entity.model_validate(data)
-    assert entity.file_path == "test/Test Entity.md"
+    assert entity.file_path == os.path.join("test", "Test Entity.md")
     assert entity.permalink == "test/test-entity"
     assert entity.entity_type == "knowledge"
 
@@ -43,7 +44,7 @@ def test_entity_non_markdown():
         "content_type": "text/plain",
     }
     entity = Entity.model_validate(data)
-    assert entity.file_path == "test/Test Entity.txt"
+    assert entity.file_path == os.path.join("test", "Test Entity.txt")
     assert entity.permalink == "test/test-entity"
     assert entity.entity_type == "file"
 
@@ -315,20 +316,21 @@ class TestTimeframeParsing:
     """Test cases for parse_timeframe() and validate_timeframe() functions."""
 
     def test_parse_timeframe_today(self):
-        """Test that parse_timeframe('today') returns start of current day."""
+        """Test that parse_timeframe('today') returns start of current day with timezone."""
         result = parse_timeframe("today")
-        expected = datetime.combine(datetime.now().date(), time.min)
+        expected = datetime.combine(datetime.now().date(), time.min).astimezone()
 
         assert result == expected
         assert result.hour == 0
         assert result.minute == 0
         assert result.second == 0
         assert result.microsecond == 0
+        assert result.tzinfo is not None
 
     def test_parse_timeframe_today_case_insensitive(self):
         """Test that parse_timeframe handles 'today' case-insensitively."""
         test_cases = ["today", "TODAY", "Today", "ToDay"]
-        expected = datetime.combine(datetime.now().date(), time.min)
+        expected = datetime.combine(datetime.now().date(), time.min).astimezone()
 
         for case in test_cases:
             result = parse_timeframe(case)
@@ -336,24 +338,27 @@ class TestTimeframeParsing:
 
     def test_parse_timeframe_other_formats(self):
         """Test that parse_timeframe works with other dateparser formats."""
-        now = datetime.now()
+        now = datetime.now().astimezone()
 
         # Test 1d ago - should be approximately 24 hours ago
         result_1d = parse_timeframe("1d")
         expected_1d = now - timedelta(days=1)
         diff = abs((result_1d - expected_1d).total_seconds())
         assert diff < 60  # Within 1 minute tolerance
+        assert result_1d.tzinfo is not None
 
         # Test yesterday - should be yesterday at same time
         result_yesterday = parse_timeframe("yesterday")
         # dateparser returns yesterday at current time, not start of yesterday
         assert result_yesterday.date() == (now.date() - timedelta(days=1))
+        assert result_yesterday.tzinfo is not None
 
         # Test 1 week ago
         result_week = parse_timeframe("1 week ago")
         expected_week = now - timedelta(weeks=1)
         diff = abs((result_week - expected_week).total_seconds())
         assert diff < 3600  # Within 1 hour tolerance
+        assert result_week.tzinfo is not None
 
     def test_parse_timeframe_invalid(self):
         """Test that parse_timeframe raises ValueError for invalid input."""
@@ -448,7 +453,7 @@ class TestTimeframeParsing:
         assert today_parsed.minute == 0
 
         # '1d' should be 24 hours ago (same time yesterday)
-        now = datetime.now()
+        now = datetime.now().astimezone()
         expected_1d = now - timedelta(days=1)
         diff = abs((oneday_parsed - expected_1d).total_seconds())
         assert diff < 60  # Within 1 minute

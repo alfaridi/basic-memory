@@ -11,6 +11,7 @@ Key Concepts:
 4. Everything is stored in both SQLite and markdown files
 """
 
+import os
 import mimetypes
 import re
 from datetime import datetime, time
@@ -22,6 +23,8 @@ from dateparser import parse
 
 from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
+from basic_memory.config import ConfigManager
+from basic_memory.file_utils import sanitize_for_filename, sanitize_for_folder
 from basic_memory.utils import generate_permalink
 
 
@@ -53,22 +56,28 @@ def parse_timeframe(timeframe: str) -> datetime:
         timeframe: Natural language timeframe like 'today', '1d', '1 week ago', etc.
 
     Returns:
-        datetime: The parsed datetime for the start of the timeframe
+        datetime: The parsed datetime for the start of the timeframe, timezone-aware in local system timezone
 
     Examples:
-        parse_timeframe('today') -> 2025-06-05 00:00:00 (start of today)
-        parse_timeframe('1d') -> 2025-06-04 14:50:00 (24 hours ago)
-        parse_timeframe('1 week ago') -> 2025-05-29 14:50:00 (1 week ago)
+        parse_timeframe('today') -> 2025-06-05 00:00:00-07:00 (start of today with local timezone)
+        parse_timeframe('1d') -> 2025-06-04 14:50:00-07:00 (24 hours ago with local timezone)
+        parse_timeframe('1 week ago') -> 2025-05-29 14:50:00-07:00 (1 week ago with local timezone)
     """
     if timeframe.lower() == "today":
-        # Return start of today (00:00:00)
-        return datetime.combine(datetime.now().date(), time.min)
+        # Return start of today (00:00:00) in local timezone
+        naive_dt = datetime.combine(datetime.now().date(), time.min)
+        return naive_dt.astimezone()
     else:
         # Use dateparser for other formats
         parsed = parse(timeframe)
         if not parsed:
             raise ValueError(f"Could not parse timeframe: {timeframe}")
-        return parsed
+
+        # If the parsed datetime is naive, make it timezone-aware in local system timezone
+        if parsed.tzinfo is None:
+            return parsed.astimezone()
+        else:
+            return parsed
 
 
 def validate_timeframe(timeframe: str) -> str:
@@ -85,7 +94,7 @@ def validate_timeframe(timeframe: str) -> str:
     parsed = parse_timeframe(timeframe)
 
     # Convert to duration
-    now = datetime.now()
+    now = datetime.now().astimezone()
     if parsed > now:
         raise ValueError("Timeframe cannot be in the future")
 
@@ -184,13 +193,41 @@ class Entity(BaseModel):
         default="text/markdown",
     )
 
+    def __init__(self, **data):
+        data["folder"] = sanitize_for_folder(data.get("folder", ""))
+        super().__init__(**data)
+
+    @property
+    def safe_title(self) -> str:
+        """
+        A sanitized version of the title, which is safe for use on the filesystem. For example,
+        a title of "Coupon Enable/Disable Feature" should create a the file as "Coupon Enable-Disable Feature.md"
+        instead of creating a file named "Disable Feature.md" beneath the "Coupon Enable" directory.
+
+        Replaces POSIX and/or Windows style slashes as well as a few other characters that are not safe for filenames.
+        If kebab_filenames is True, then behavior is consistent with transformation used when generating permalink
+        strings (e.g. "Coupon Enable/Disable Feature" -> "coupon-enable-disable-feature").
+        """
+        fixed_title = sanitize_for_filename(self.title)
+
+        app_config = ConfigManager().config
+        use_kebab_case = app_config.kebab_filenames
+
+        if use_kebab_case:
+            fixed_title = generate_permalink(file_path=fixed_title, split_extension=False)
+
+        return fixed_title
+
     @property
     def file_path(self):
         """Get the file path for this entity based on its permalink."""
+        safe_title = self.safe_title
         if self.content_type == "text/markdown":
-            return f"{self.folder}/{self.title}.md" if self.folder else f"{self.title}.md"
+            return (
+                os.path.join(self.folder, f"{safe_title}.md") if self.folder else f"{safe_title}.md"
+            )
         else:
-            return f"{self.folder}/{self.title}" if self.folder else self.title
+            return os.path.join(self.folder, safe_title) if self.folder else safe_title
 
     @property
     def permalink(self) -> Permalink:

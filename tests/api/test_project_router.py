@@ -2,6 +2,54 @@
 
 import pytest
 
+from basic_memory.schemas.project_info import ProjectItem
+
+
+@pytest.mark.asyncio
+async def test_get_project_item(test_graph, client, project_config, test_project, project_url):
+    """Test the project item endpoint returns correctly structured data."""
+    # Set up some test data in the database
+
+    # Call the endpoint
+    response = await client.get(f"{project_url}/project/item")
+
+    # Verify response
+    assert response.status_code == 200
+    project_info = ProjectItem.model_validate(response.json())
+    assert project_info.name == test_project.name
+    assert project_info.path == test_project.path
+    assert project_info.is_default == test_project.is_default
+
+
+@pytest.mark.asyncio
+async def test_get_project_item_not_found(
+    test_graph, client, project_config, test_project, project_url
+):
+    """Test the project item endpoint returns correctly structured data."""
+    # Set up some test data in the database
+
+    # Call the endpoint
+    response = await client.get("/not-found/project/item")
+
+    # Verify response
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_default_project(test_graph, client, project_config, test_project, project_url):
+    """Test the default project item endpoint returns the default project."""
+    # Set up some test data in the database
+
+    # Call the endpoint
+    response = await client.get("/projects/default")
+
+    # Verify response
+    assert response.status_code == 200
+    project_info = ProjectItem.model_validate(response.json())
+    assert project_info.name == test_project.name
+    assert project_info.path == test_project.path
+    assert project_info.is_default == test_project.is_default
+
 
 @pytest.mark.asyncio
 async def test_get_project_info_endpoint(test_graph, client, project_config, project_url):
@@ -168,8 +216,8 @@ async def test_update_project_path_endpoint(
     """Test the update project endpoint for changing project path."""
     # Create a test project to update
     test_project_name = "test-update-project"
-    old_path = str(tmp_path / "old-location")
-    new_path = str(tmp_path / "new-location")
+    old_path = (tmp_path / "old-location").as_posix()
+    new_path = (tmp_path / "new-location").as_posix()
 
     await project_service.add_project(test_project_name, old_path)
 
@@ -256,8 +304,8 @@ async def test_update_project_both_params_endpoint(
     """Test the update project endpoint with both path and is_active parameters."""
     # Create a test project to update
     test_project_name = "test-update-both-project"
-    old_path = str(tmp_path / "old-location")
-    new_path = str(tmp_path / "new-location")
+    old_path = (tmp_path / "old-location").as_posix()
+    new_path = (tmp_path / "new-location").as_posix()
 
     await project_service.add_project(test_project_name, old_path)
 
@@ -344,7 +392,8 @@ async def test_update_project_no_params_endpoint(test_config, client, project_se
     await project_service.add_project(test_project_name, test_path)
     proj_info = await project_service.get_project(test_project_name)
     assert proj_info.name == test_project_name
-    assert proj_info.path == test_path
+    # On Windows the path is prepended with a drive letter
+    assert test_path in proj_info.path
 
     try:
         # Try to update with no parameters
@@ -354,7 +403,8 @@ async def test_update_project_no_params_endpoint(test_config, client, project_se
         assert response.status_code == 200
         proj_info = await project_service.get_project(test_project_name)
         assert proj_info.name == test_project_name
-        assert proj_info.path == test_path
+        # On Windows the path is prepended with a drive letter
+        assert test_path in proj_info.path
 
     finally:
         # Clean up

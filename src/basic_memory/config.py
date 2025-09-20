@@ -46,7 +46,7 @@ class BasicMemoryConfig(BaseSettings):
 
     projects: Dict[str, str] = Field(
         default_factory=lambda: {
-            "main": str(Path(os.getenv("BASIC_MEMORY_HOME", Path.home() / "basic-memory")))
+            "main": Path(os.getenv("BASIC_MEMORY_HOME", Path.home() / "basic-memory")).as_posix()
         },
         description="Mapping of project names to their filesystem paths",
     )
@@ -63,6 +63,10 @@ class BasicMemoryConfig(BaseSettings):
         default=1000, description="Milliseconds to wait after changes before syncing", gt=0
     )
 
+    watch_project_reload_interval: int = Field(
+        default=30, description="Seconds between reloading project list in watch service", gt=0
+    )
+
     # update permalinks on move
     update_permalinks_on_move: bool = Field(
         default=False,
@@ -74,10 +78,31 @@ class BasicMemoryConfig(BaseSettings):
         description="Whether to sync changes in real time. default (True)",
     )
 
+    kebab_filenames: bool = Field(
+        default=False,
+        description="Format for generated filenames. False preserves spaces and special chars, True converts them to hyphens for consistency with permalinks",
+    )
+
     # API connection configuration
     api_url: Optional[str] = Field(
         default=None,
         description="URL of remote Basic Memory API. If set, MCP will connect to this API instead of using local ASGI transport.",
+    )
+
+    # Cloud configuration
+    cloud_client_id: str = Field(
+        default="client_01K4DGBWAZWP83N3H8VVEMRX6W",
+        description="OAuth client ID for Basic Memory Cloud",
+    )
+
+    cloud_domain: str = Field(
+        default="https://eloquent-lotus-05.authkit.app",
+        description="AuthKit domain for Basic Memory Cloud",
+    )
+
+    cloud_host: str = Field(
+        default="https://cloud.basicmemory.com",
+        description="Basic Memory Cloud proxy host URL",
     )
 
     model_config = SettingsConfigDict(
@@ -100,9 +125,9 @@ class BasicMemoryConfig(BaseSettings):
         """Ensure configuration is valid after initialization."""
         # Ensure main project exists
         if "main" not in self.projects:  # pragma: no cover
-            self.projects["main"] = str(
+            self.projects["main"] = (
                 Path(os.getenv("BASIC_MEMORY_HOME", Path.home() / "basic-memory"))
-            )
+            ).as_posix()
 
         # Ensure default project is valid
         if self.default_project not in self.projects:  # pragma: no cover
@@ -152,6 +177,10 @@ class BasicMemoryConfig(BaseSettings):
                     logger.error(f"Failed to create project path: {e}")
                     raise e
         return v
+
+    @property
+    def data_dir_path(self):
+        return Path.home() / DATA_DIR_NAME
 
 
 class ConfigManager:
@@ -215,7 +244,7 @@ class ConfigManager:
 
         # Load config, modify it, and save it
         config = self.load_config()
-        config.projects[name] = str(project_path)
+        config.projects[name] = project_path.as_posix()
         self.save_config(config)
         return ProjectConfig(name=name, home=project_path)
 
@@ -242,7 +271,7 @@ class ConfigManager:
 
         # Load config, modify, and save
         config = self.load_config()
-        config.default_project = name
+        config.default_project = project_name
         self.save_config(config)
 
     def get_project(self, name: str) -> Tuple[str, str] | Tuple[None, None]:
@@ -351,15 +380,22 @@ def setup_basic_memory_logging():  # pragma: no cover
         # print("Skipping duplicate logging setup")
         return
 
-    # Check for console logging environment variable
-    console_logging = os.getenv("BASIC_MEMORY_CONSOLE_LOGGING", "false").lower() == "true"
+    # Check for console logging environment variable - accept more truthy values
+    console_logging_env = os.getenv("BASIC_MEMORY_CONSOLE_LOGGING", "false").lower()
+    console_logging = console_logging_env in ("true", "1", "yes", "on")
+
+    # Check for log level environment variable first, fall back to config
+    log_level = os.getenv("BASIC_MEMORY_LOG_LEVEL")
+    if not log_level:
+        config_manager = ConfigManager()
+        log_level = config_manager.config.log_level
 
     config_manager = ConfigManager()
     config = get_project_config()
     setup_logging(
         env=config_manager.config.env,
         home_dir=user_home,  # Use user home for logs
-        log_level=config_manager.config.log_level,
+        log_level=log_level,
         log_file=f"{DATA_DIR_NAME}/basic-memory-{process_name}.log",
         console=console_logging,
     )

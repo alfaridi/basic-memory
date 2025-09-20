@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 from loguru import logger
 from sqlalchemy import Executable, Result, text
@@ -59,8 +60,11 @@ class SearchIndexRow:
         if not self.type == SearchItemType.ENTITY.value and not self.file_path:
             return ""
 
+        # Normalize path separators to handle both Windows (\) and Unix (/) paths
+        normalized_path = Path(self.file_path).as_posix()
+
         # Split the path by slashes
-        parts = self.file_path.split("/")
+        parts = normalized_path.split("/")
 
         # If there's only one part (e.g., "README.md"), it's at the root
         if len(parts) <= 1:
@@ -523,8 +527,10 @@ class SearchRepository:
         async with db.scoped_session(self.session_maker) as session:
             # Delete existing record if any
             await session.execute(
-                text("DELETE FROM search_index WHERE permalink = :permalink"),
-                {"permalink": search_index_row.permalink},
+                text(
+                    "DELETE FROM search_index WHERE permalink = :permalink AND project_id = :project_id"
+                ),
+                {"permalink": search_index_row.permalink, "project_id": self.project_id},
             )
 
             # Prepare data for insert with project_id

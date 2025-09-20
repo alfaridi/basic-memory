@@ -357,8 +357,8 @@ class SyncService:
 
             # get file timestamps
             file_stats = self.file_service.file_stats(path)
-            created = datetime.fromtimestamp(file_stats.st_ctime)
-            modified = datetime.fromtimestamp(file_stats.st_mtime)
+            created = datetime.fromtimestamp(file_stats.st_ctime).astimezone()
+            modified = datetime.fromtimestamp(file_stats.st_mtime).astimezone()
 
             # get mime type
             content_type = self.file_service.content_type(path)
@@ -619,7 +619,7 @@ class SyncService:
                     continue
 
                 path = Path(root) / filename
-                rel_path = str(path.relative_to(directory))
+                rel_path = path.relative_to(directory).as_posix()
                 checksum = await self.file_service.compute_checksum(rel_path)
                 result.files[rel_path] = checksum
                 result.checksums[checksum] = rel_path

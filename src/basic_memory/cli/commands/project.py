@@ -9,7 +9,6 @@ from rich.console import Console
 from rich.table import Table
 
 from basic_memory.cli.app import app
-from basic_memory.mcp.project_session import session
 from basic_memory.mcp.resources.project_info import project_info
 import json
 from datetime import datetime
@@ -23,8 +22,8 @@ from basic_memory.mcp.tools.utils import call_post
 from basic_memory.schemas.project_info import ProjectStatusResponse
 from basic_memory.mcp.tools.utils import call_delete
 from basic_memory.mcp.tools.utils import call_put
-from basic_memory.mcp.tools.utils import call_patch
 from basic_memory.utils import generate_permalink
+from basic_memory.mcp.tools.utils import call_patch
 
 console = Console()
 
@@ -52,13 +51,11 @@ def list_projects() -> None:
         table = Table(title="Basic Memory Projects")
         table.add_column("Name", style="cyan")
         table.add_column("Path", style="green")
-        table.add_column("Default", style="yellow")
-        table.add_column("Active", style="magenta")
+        table.add_column("Default", style="magenta")
 
         for project in result.projects:
             is_default = "✓" if project.is_default else ""
-            is_active = "✓" if session.get_current_project() == project.name else ""
-            table.add_row(project.name, format_path(project.path), is_default, is_active)
+            table.add_row(project.name, format_path(project.path), is_default)
 
         console.print(table)
     except Exception as e:
@@ -74,7 +71,7 @@ def add_project(
 ) -> None:
     """Add a new project."""
     # Resolve to absolute path
-    resolved_path = os.path.abspath(os.path.expanduser(path))
+    resolved_path = Path(os.path.abspath(os.path.expanduser(path))).as_posix()
 
     try:
         data = {"name": name, "path": resolved_path, "set_default": set_default}
@@ -100,8 +97,8 @@ def remove_project(
 ) -> None:
     """Remove a project from configuration."""
     try:
-        project_name = generate_permalink(name)
-        response = asyncio.run(call_delete(client, f"/projects/{project_name}"))
+        project_permalink = generate_permalink(name)
+        response = asyncio.run(call_delete(client, f"/projects/{project_permalink}"))
         result = ProjectStatusResponse.model_validate(response.json())
 
         console.print(f"[green]{result.message}[/green]")
@@ -119,9 +116,8 @@ def set_default_project(
 ) -> None:
     """Set the default project and activate it for the current session."""
     try:
-        project_name = generate_permalink(name)
-
-        response = asyncio.run(call_put(client, f"/projects/{project_name}/default"))
+        project_permalink = generate_permalink(name)
+        response = asyncio.run(call_put(client, f"/projects/{project_permalink}/default"))
         result = ProjectStatusResponse.model_validate(response.json())
 
         console.print(f"[green]{result.message}[/green]")
@@ -156,15 +152,16 @@ def move_project(
 ) -> None:
     """Move a project to a new location."""
     # Resolve to absolute path
-    resolved_path = os.path.abspath(os.path.expanduser(new_path))
+    resolved_path = Path(os.path.abspath(os.path.expanduser(new_path))).as_posix()
 
     try:
         data = {"path": resolved_path}
-        project_name = generate_permalink(name)
 
-        current_project = session.get_current_project()
+        project_permalink = generate_permalink(name)
+
+        # TODO fix route to use ProjectPathDep
         response = asyncio.run(
-            call_patch(client, f"/{current_project}/project/{project_name}", json=data)
+            call_patch(client, f"/{name}/project/{project_permalink}", json=data)
         )
         result = ProjectStatusResponse.model_validate(response.json())
 

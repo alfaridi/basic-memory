@@ -3,17 +3,20 @@
 from typing import Optional
 
 from loguru import logger
+from fastmcp import Context
 
 from basic_memory.mcp.async_client import client
+from basic_memory.mcp.project_context import get_active_project
 from basic_memory.mcp.server import mcp
 from basic_memory.mcp.tools.utils import call_get
-from basic_memory.mcp.project_session import get_active_project
 from basic_memory.schemas.base import TimeFrame
 from basic_memory.schemas.memory import (
     GraphContext,
     MemoryUrl,
     memory_url_path,
 )
+
+type StringOrInt = str | int
 
 
 @mcp.tool(
@@ -35,12 +38,13 @@ from basic_memory.schemas.memory import (
 )
 async def build_context(
     url: MemoryUrl,
-    depth: Optional[int] = 1,
+    depth: Optional[StringOrInt] = 1,
     timeframe: Optional[TimeFrame] = "7d",
     page: int = 1,
     page_size: int = 10,
     max_related: int = 10,
     project: Optional[str] = None,
+    context: Context | None = None,
 ) -> GraphContext:
     """Get context needed to continue a discussion.
 
@@ -56,6 +60,7 @@ async def build_context(
         page_size: Number of results to return per page (default: 10)
         max_related: Maximum number of related results to return (default: 10)
         project: Optional project name to build context from. If not provided, uses current active project.
+        context: Optional context to use for this tool.
 
     Returns:
         GraphContext containing:
@@ -80,10 +85,20 @@ async def build_context(
         build_context("memory://specs/search", project="work-project")
     """
     logger.info(f"Building context from {url}")
+
+    # Convert string depth to integer if needed
+    if isinstance(depth, str):
+        try:
+            depth = int(depth)
+        except ValueError:
+            from mcp.server.fastmcp.exceptions import ToolError
+
+            raise ToolError(f"Invalid depth parameter: '{depth}' is not a valid integer")
+
     # URL is already validated and normalized by MemoryUrl type annotation
 
     # Get the active project first to check project-specific sync status
-    active_project = get_active_project(project)
+    active_project = await get_active_project(client, context=context, project_override=project)
 
     # Check migration status and wait briefly if needed
     from basic_memory.mcp.tools.utils import wait_for_migration_or_return_status
@@ -101,7 +116,7 @@ async def build_context(
             metadata=MemoryMetadata(
                 depth=depth or 1,
                 timeframe=timeframe,
-                generated_at=datetime.now(),
+                generated_at=datetime.now().astimezone(),
                 primary_count=0,
                 related_count=0,
                 uri=migration_status,  # Include status in metadata
