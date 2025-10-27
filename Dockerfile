@@ -42,5 +42,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD basic-memory --version || exit 1
 
-# Use the basic-memory entrypoint to run the MCP server with default SSE transport
-CMD ["basic-memory", "mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
+# Use the basic-memory entrypoint to run the MCP server with default streamable-http transport
+CMD ["basic-memory", "mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000", "--project", "main"]
